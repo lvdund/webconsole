@@ -11,11 +11,6 @@ import (
 	"github.com/free5gc/webconsole/backend/logger"
 )
 
-// Configuration constants
-const (
-	DefaultFTPTimeout = 5 * time.Second
-)
-
 // The ftp client is for CDR Pull method, that is the billing domain actively query CDR file from CHF
 func FTPLogin() (*ftp.ServerConn, error) {
 	// FTP server is for CDR transfer
@@ -24,7 +19,7 @@ func FTPLogin() (*ftp.ServerConn, error) {
 
 	var c *ftp.ServerConn
 
-	c, err := ftp.Dial(addr, ftp.DialWithTimeout(DefaultFTPTimeout))
+	c, err := ftp.Dial(addr, ftp.DialWithTimeout(5*time.Second))
 	if err != nil {
 		return nil, err
 	}

@@ -44,13 +44,6 @@ const (
 	profileDataColl     = "profileData" // store profile data
 )
 
-// Security and configuration constants
-const (
-	DefaultBcryptCost  = 12
-	JWTKeySize         = 256
-	JWTExpirationHours = 24
-)
-
 var jwtKey = "" // for generating JWT
 
 var httpsClient *http.Client
@@ -95,7 +88,7 @@ func SetAdmin() {
 	// Create Admin user
 	logger.InitLog.Infoln("Create user: admin")
 
-	hash, err := bcrypt.GenerateFromPassword([]byte("free5gc"), DefaultBcryptCost)
+	hash, err := bcrypt.GenerateFromPassword([]byte("free5gc"), 12)
 	if err != nil {
 		logger.InitLog.Errorf("GenerateFromPassword err: %+v", err)
 	}
@@ -114,7 +107,7 @@ func SetAdmin() {
 }
 
 func InitJwtKey() error {
-	randomBytes := make([]byte, JWTKeySize)
+	randomBytes := make([]byte, 256)
 	_, err := rand.Read(randomBytes)
 	if err != nil {
 		return errors.Wrap(err, "Init JWT key error")
@@ -124,7 +117,7 @@ func InitJwtKey() error {
 	return nil
 }
 
-func mapToByte(data map[string]interface{}) (ret []byte) {
+func MapToByte(data map[string]interface{}) (ret []byte) {
 	ret, err := json.Marshal(data)
 	if err != nil {
 		logger.ProcLog.Errorf("mapToByte err: %+v", err)
@@ -140,7 +133,7 @@ func sliceToByte(data []map[string]interface{}) (ret []byte) {
 	return
 }
 
-func toBsonM(data interface{}) (ret bson.M) {
+func ToBsonM(data interface{}) (ret bson.M) {
 	tmp, err := json.Marshal(data)
 	if err != nil {
 		logger.ProcLog.Errorf("toBsonM err: %+v", err)
@@ -296,7 +289,7 @@ func JWT(email, userId, tenantId string) string {
 	claims := token.Claims.(jwt.MapClaims)
 	claims["sub"] = userId
 	claims["iat"] = time.Now()
-	claims["exp"] = time.Now().Add(time.Hour * JWTExpirationHours).Unix()
+	claims["exp"] = time.Now().Add(time.Hour * 24).Unix()
 	claims["email"] = email
 	claims["tenantId"] = tenantId
 
@@ -470,7 +463,7 @@ func GetTenantByID(c *gin.Context) {
 	}
 
 	var tenantData Tenant
-	err = json.Unmarshal(mapToByte(tenantDataInterface), &tenantData)
+	err = json.Unmarshal(MapToByte(tenantDataInterface), &tenantData)
 	if err != nil {
 		logger.ProcLog.Errorf("GetTenantByID err: %+v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{})
@@ -498,7 +491,7 @@ func PostTenant(c *gin.Context) {
 		tenantData.TenantId = uuid.Must(uuid.NewRandom()).String()
 	}
 
-	tenantBsonM := toBsonM(tenantData)
+	tenantBsonM := ToBsonM(tenantData)
 	filterTenantIdOnly := bson.M{"tenantId": tenantData.TenantId}
 	if _, err := mongoapi.RestfulAPIPost(tenantDataColl, filterTenantIdOnly, tenantBsonM); err != nil {
 		logger.ProcLog.Errorf("PostTenant err: %+v", err)
@@ -538,7 +531,7 @@ func PutTenantByID(c *gin.Context) {
 	}
 	tenantData.TenantId = tenantId
 
-	tenantBsonM := toBsonM(tenantData)
+	tenantBsonM := ToBsonM(tenantData)
 	filterTenantIdOnly = bson.M{"tenantId": tenantId}
 	if _, err_post := mongoapi.RestfulAPIPost(tenantDataColl, filterTenantIdOnly, tenantBsonM); err_post != nil {
 		logger.ProcLog.Errorf("PutTenantByID err: %+v", err_post)
@@ -656,7 +649,7 @@ func GetUserByID(c *gin.Context) {
 	}
 
 	var userData User
-	err = json.Unmarshal(mapToByte(userDataInterface), &userData)
+	err = json.Unmarshal(MapToByte(userDataInterface), &userData)
 	if err != nil {
 		logger.ProcLog.Errorf("GetUserByID err: %+v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{})
@@ -703,7 +696,7 @@ func PostUserByID(c *gin.Context) {
 
 	userData.TenantId = tenantId
 	userData.UserId = uuid.Must(uuid.NewRandom()).String()
-	hash, err := bcrypt.GenerateFromPassword([]byte(userData.EncryptedPassword), DefaultBcryptCost)
+	hash, err := bcrypt.GenerateFromPassword([]byte(userData.EncryptedPassword), 12)
 	if err != nil {
 		logger.ProcLog.Errorf("PostUserByID err: %+v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{})
@@ -711,7 +704,7 @@ func PostUserByID(c *gin.Context) {
 	}
 	userData.EncryptedPassword = string(hash)
 
-	userBsonM := toBsonM(userData)
+	userBsonM := ToBsonM(userData)
 	filterUserIdOnly := bson.M{"tenantId": userData.TenantId, "userId": userData.UserId}
 	if _, err_post := mongoapi.RestfulAPIPost(userDataColl, filterUserIdOnly, userBsonM); err_post != nil {
 		logger.ProcLog.Errorf("PostUserByID err: %+v", err_post)
@@ -756,7 +749,7 @@ func PutUserByID(c *gin.Context) {
 	}
 
 	var userData User
-	err = json.Unmarshal(mapToByte(userDataInterface), &userData)
+	err = json.Unmarshal(MapToByte(userDataInterface), &userData)
 	if err != nil {
 		logger.ProcLog.Errorf("PutUserByID err: %+v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{})
@@ -779,7 +772,7 @@ func PutUserByID(c *gin.Context) {
 	}
 
 	if newUserData.EncryptedPassword != "" {
-		hash, err_gen := bcrypt.GenerateFromPassword([]byte(newUserData.EncryptedPassword), DefaultBcryptCost)
+		hash, err_gen := bcrypt.GenerateFromPassword([]byte(newUserData.EncryptedPassword), 12)
 		if err_gen != nil {
 			logger.ProcLog.Errorf("PutUserByID err: %+v", err_gen)
 			c.JSON(http.StatusInternalServerError, gin.H{})
@@ -788,7 +781,7 @@ func PutUserByID(c *gin.Context) {
 		userData.EncryptedPassword = string(hash)
 	}
 
-	userBsonM := toBsonM(userData)
+	userBsonM := ToBsonM(userData)
 	if _, err_post := mongoapi.RestfulAPIPost(userDataColl, filterUserIdOnly, userBsonM); err_post != nil {
 		logger.ProcLog.Errorf("PutUserByID err: %+v", err_post)
 		c.JSON(http.StatusInternalServerError, gin.H{})
@@ -840,7 +833,7 @@ func GetSubscribers(c *gin.Context) {
 
 	isAdmin := CheckAuth(c)
 
-	subsList := make([]SubsListIE, 0)
+	var subsList []SubsListIE = make([]SubsListIE, 0)
 	amDataList, err := mongoapi.RestfulAPIGetMany(amDataColl, bson.M{})
 	if err != nil {
 		logger.ProcLog.Errorf("GetSubscribers err: %+v", err)
@@ -863,7 +856,7 @@ func GetSubscribers(c *gin.Context) {
 		}
 
 		var authSubsData AuthSub
-		if err = json.Unmarshal(mapToByte(authSubsDataInterface), &authSubsData); err != nil {
+		if err = json.Unmarshal(MapToByte(authSubsDataInterface), &authSubsData); err != nil {
 			logger.ProcLog.Errorf("GetSubscribers err: %+v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{})
 			return
@@ -960,13 +953,13 @@ func GetSubscriberByID(c *gin.Context) {
 	}
 
 	var authSubsData WebAuthenticationSubscription
-	if err = json.Unmarshal(mapToByte(authSubsDataInterface), &authSubsData); err != nil {
+	if err = json.Unmarshal(MapToByte(authSubsDataInterface), &authSubsData); err != nil {
 		logger.ProcLog.Errorf("GetSubscriberByID err: %+v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{})
 		return
 	}
 	var amDataData models.AccessAndMobilitySubscriptionData
-	if err = json.Unmarshal(mapToByte(amDataDataInterface), &amDataData); err != nil {
+	if err = json.Unmarshal(MapToByte(amDataDataInterface), &amDataData); err != nil {
 		logger.ProcLog.Errorf("GetSubscriberByID err: %+v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{})
 		return
@@ -978,19 +971,19 @@ func GetSubscriberByID(c *gin.Context) {
 		return
 	}
 	var smfSelData models.SmfSelectionSubscriptionData
-	if err = json.Unmarshal(mapToByte(smfSelDataInterface), &smfSelData); err != nil {
+	if err = json.Unmarshal(MapToByte(smfSelDataInterface), &smfSelData); err != nil {
 		logger.ProcLog.Errorf("GetSubscriberByID err: %+v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{})
 		return
 	}
 	var amPolicyData models.AmPolicyData
-	if err = json.Unmarshal(mapToByte(amPolicyDataInterface), &amPolicyData); err != nil {
+	if err = json.Unmarshal(MapToByte(amPolicyDataInterface), &amPolicyData); err != nil {
 		logger.ProcLog.Errorf("GetSubscriberByID err: %+v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{})
 		return
 	}
 	var smPolicyData models.SmPolicyData
-	if err = json.Unmarshal(mapToByte(smPolicyDataInterface), &smPolicyData); err != nil {
+	if err = json.Unmarshal(MapToByte(smPolicyDataInterface), &smPolicyData); err != nil {
 		logger.ProcLog.Errorf("GetSubscriberByID err: %+v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{})
 		return
@@ -1100,7 +1093,7 @@ func PostSubscriberByID(c *gin.Context) {
 		})
 		return
 	}
-	gpsi := getMsisdn(toBsonM(subsData.AccessAndMobilitySubscriptionData)["gpsis"])
+	gpsi := getMsisdn(ToBsonM(subsData.AccessAndMobilitySubscriptionData)["gpsis"])
 	gpsiInt := 0
 	if gpsi != "" {
 		if len(gpsi) > 7 && gpsi[:7] == "msisdn-" { // case: MSISDN
@@ -1199,7 +1192,7 @@ func identityDataOperation(supi string, gpsi string, method string) {
 	}
 }
 
-func sendRechargeNotification(ueId string, rg int32) {
+func SendRechargeNotification(ueId string, rg int32) {
 	logger.ProcLog.Infoln("Send Notification to CHF due to quota change")
 	webuiSelf := webui_context.GetSelf()
 	webuiSelf.UpdateNfProfiles()
@@ -1238,8 +1231,7 @@ func dbOperation(
 	filter := bson.M{"ueId": ueId, "servingPlmnId": servingPlmnId}
 
 	// Replace all data with new one
-	switch method {
-	case "put":
+	if method == "put" {
 		if err := mongoapi.RestfulAPIDeleteMany(flowRuleDataColl, filter); err != nil {
 			logger.ProcLog.Errorf("PutSubscriberByID err: %+v", err)
 		}
@@ -1249,7 +1241,7 @@ func dbOperation(
 		if err := mongoapi.RestfulAPIDeleteMany(chargingDataColl, filter); err != nil {
 			logger.ProcLog.Errorf("PutSubscriberByID err: %+v", err)
 		}
-	case "delete":
+	} else if method == "delete" {
 		if multiple {
 			multipleFilterUeIdOnlyConditions, multipleFliterConditions := []bson.M{}, []bson.M{}
 			for _, subsData := range subsDatas {
@@ -1338,14 +1330,15 @@ func dbOperation(
 		}
 	}
 	if method == "post" || method == "put" {
-		webAuthSubsBsonM := toBsonM(subsData.WebAuthenticationSubscription)
+		LogToFilePrettyJSON(subsData, "log_data.log")
+		webAuthSubsBsonM := ToBsonM(subsData.WebAuthenticationSubscription)
 		webAuthSubsBsonM["ueId"] = ueId
 
 		authSubs, errModel := WebAuthSubToModels(subsData.WebAuthenticationSubscription)
 		if errModel != nil {
 			logger.ProcLog.Errorf("WebAuthSubToModels err: %+v", errModel)
 		}
-		authSubsBsonM := toBsonM(authSubs)
+		authSubsBsonM := ToBsonM(authSubs)
 		authSubsBsonM["ueId"] = ueId
 
 		if claims != nil {
@@ -1353,7 +1346,7 @@ func dbOperation(
 			authSubsBsonM["tenantId"] = claims["tenantId"].(string)
 		}
 
-		amDataBsonM := toBsonM(subsData.AccessAndMobilitySubscriptionData)
+		amDataBsonM := ToBsonM(subsData.AccessAndMobilitySubscriptionData)
 		amDataBsonM["ueId"] = ueId
 		amDataBsonM["servingPlmnId"] = servingPlmnId
 		if claims != nil {
@@ -1365,7 +1358,7 @@ func dbOperation(
 			logger.ProcLog.Errorf("PutSubscriberByID err: %+v", err)
 		}
 		for _, data := range subsData.SessionManagementSubscriptionData {
-			smDataBsonM := toBsonM(data)
+			smDataBsonM := ToBsonM(data)
 			smDataBsonM["ueId"] = ueId
 			smDataBsonM["servingPlmnId"] = servingPlmnId
 			filterSmData := bson.M{"ueId": ueId, "servingPlmnId": servingPlmnId, "snssai": data.SingleNssai}
@@ -1384,12 +1377,12 @@ func dbOperation(
 			subsData.SmPolicyData.SmPolicySnssaiData[key] = SnssaiData
 		}
 
-		smfSelSubsBsonM := toBsonM(subsData.SmfSelectionSubscriptionData)
+		smfSelSubsBsonM := ToBsonM(subsData.SmfSelectionSubscriptionData)
 		smfSelSubsBsonM["ueId"] = ueId
 		smfSelSubsBsonM["servingPlmnId"] = servingPlmnId
-		amPolicyDataBsonM := toBsonM(subsData.AmPolicyData)
+		amPolicyDataBsonM := ToBsonM(subsData.AmPolicyData)
 		amPolicyDataBsonM["ueId"] = ueId
-		smPolicyDataBsonM := toBsonM(subsData.SmPolicyData)
+		smPolicyDataBsonM := ToBsonM(subsData.SmPolicyData)
 		smPolicyDataBsonM["ueId"] = ueId
 
 		if len(subsData.FlowRules) == 0 {
@@ -1397,7 +1390,7 @@ func dbOperation(
 		} else {
 			flowRulesBsonA := make([]interface{}, 0, len(subsData.FlowRules))
 			for _, flowRule := range subsData.FlowRules {
-				flowRuleBsonM := toBsonM(flowRule)
+				flowRuleBsonM := ToBsonM(flowRule)
 				flowRuleBsonM["ueId"] = ueId
 				flowRuleBsonM["servingPlmnId"] = servingPlmnId
 				flowRulesBsonA = append(flowRulesBsonA, flowRuleBsonM)
@@ -1412,7 +1405,7 @@ func dbOperation(
 		} else {
 			qosFlowBsonA := make([]interface{}, 0, len(subsData.QosFlows))
 			for _, qosFlow := range subsData.QosFlows {
-				qosFlowBsonM := toBsonM(qosFlow)
+				qosFlowBsonM := ToBsonM(qosFlow)
 				qosFlowBsonM["ueId"] = ueId
 				qosFlowBsonM["servingPlmnId"] = servingPlmnId
 				qosFlowBsonA = append(qosFlowBsonA, qosFlowBsonM)
@@ -1429,7 +1422,7 @@ func dbOperation(
 				var previousChargingData ChargingData
 				var chargingFilter primitive.M
 
-				chargingDataBsonM := toBsonM(chargingData)
+				chargingDataBsonM := ToBsonM(chargingData)
 				// Clear quota for offline charging flow
 				if chargingData.ChargingMethod == ChargingOffline {
 					chargingDataBsonM["quota"] = "0"
@@ -1461,7 +1454,7 @@ func dbOperation(
 				if err != nil {
 					logger.ProcLog.Errorf("PostSubscriberByID err: %+v", err)
 				}
-				err = json.Unmarshal(mapToByte(previousChargingDataInterface), &previousChargingData)
+				err = json.Unmarshal(MapToByte(previousChargingDataInterface), &previousChargingData)
 				if err != nil {
 					logger.ProcLog.Error(err)
 				}
@@ -1471,7 +1464,7 @@ func dbOperation(
 					rg := ratingGroup.(int32)
 					chargingDataBsonM["ratingGroup"] = rg
 					if previousChargingData.Quota != chargingData.Quota {
-						sendRechargeNotification(ueId, rg)
+						SendRechargeNotification(ueId, rg)
 					}
 				}
 
@@ -1520,7 +1513,7 @@ func PutSubscriberByID(c *gin.Context) {
 	ueId := c.Param("ueId")
 	servingPlmnId := c.Param("servingPlmnId")
 	// modify a gpsi-supi map
-	gpsi := getMsisdn(toBsonM(subsData.AccessAndMobilitySubscriptionData)["gpsis"])
+	gpsi := getMsisdn(ToBsonM(subsData.AccessAndMobilitySubscriptionData)["gpsis"])
 	if !validate(ueId, gpsi) {
 		logger.ProcLog.Errorf("duplicate gpsi: %v", gpsi)
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -1565,17 +1558,17 @@ func PatchSubscriberByID(c *gin.Context) {
 	filterUeIdOnly := bson.M{"ueId": supi}
 	filter := bson.M{"ueId": supi, "servingPlmnId": servingPlmnId}
 
-	webAuthSubsBsonM := toBsonM(subsData.WebAuthenticationSubscription)
+	webAuthSubsBsonM := ToBsonM(subsData.WebAuthenticationSubscription)
 	webAuthSubsBsonM["ueId"] = supi
 
 	authSubs, errModels := WebAuthSubToModels(subsData.WebAuthenticationSubscription)
 	if errModels != nil {
 		logger.ProcLog.Errorf("WebAuthSubToModels err: %+v", errModels)
 	}
-	authSubsBsonM := toBsonM(authSubs)
+	authSubsBsonM := ToBsonM(authSubs)
 	authSubsBsonM["ueId"] = ueId
 
-	amDataBsonM := toBsonM(subsData.AccessAndMobilitySubscriptionData)
+	amDataBsonM := ToBsonM(subsData.AccessAndMobilitySubscriptionData)
 	amDataBsonM["ueId"] = supi
 	amDataBsonM["servingPlmnId"] = servingPlmnId
 
@@ -1586,7 +1579,7 @@ func PatchSubscriberByID(c *gin.Context) {
 		return
 	}
 	for _, data := range subsData.SessionManagementSubscriptionData {
-		smDataBsonM := toBsonM(data)
+		smDataBsonM := ToBsonM(data)
 		smDataBsonM["ueId"] = supi
 		smDataBsonM["servingPlmnId"] = servingPlmnId
 		filterSmData := bson.M{"ueId": supi, "servingPlmnId": servingPlmnId, "snssai": data.SingleNssai}
@@ -1597,12 +1590,12 @@ func PatchSubscriberByID(c *gin.Context) {
 		}
 	}
 
-	smfSelSubsBsonM := toBsonM(subsData.SmfSelectionSubscriptionData)
+	smfSelSubsBsonM := ToBsonM(subsData.SmfSelectionSubscriptionData)
 	smfSelSubsBsonM["ueId"] = supi
 	smfSelSubsBsonM["servingPlmnId"] = servingPlmnId
-	amPolicyDataBsonM := toBsonM(subsData.AmPolicyData)
+	amPolicyDataBsonM := ToBsonM(subsData.AmPolicyData)
 	amPolicyDataBsonM["ueId"] = supi
-	smPolicyDataBsonM := toBsonM(subsData.SmPolicyData)
+	smPolicyDataBsonM := ToBsonM(subsData.SmPolicyData)
 	smPolicyDataBsonM["ueId"] = supi
 
 	if err := mongoapi.RestfulAPIMergePatch(authWebSubsDataColl, filterUeIdOnly, webAuthSubsBsonM); err != nil {
@@ -1864,20 +1857,20 @@ func ChangePasswordInfo(c *gin.Context) {
 	}
 
 	var userData User
-	err = json.Unmarshal(mapToByte(userDataInterface), &userData)
+	err = json.Unmarshal(MapToByte(userDataInterface), &userData)
 	if err != nil {
 		logger.ProcLog.Errorf("JSON Unmarshal err: %+v", err)
 	}
 
 	if newUserData.EncryptedPassword != "" {
-		hash, err_gen := bcrypt.GenerateFromPassword([]byte(newUserData.EncryptedPassword), DefaultBcryptCost)
+		hash, err_gen := bcrypt.GenerateFromPassword([]byte(newUserData.EncryptedPassword), 12)
 		if err_gen != nil {
 			logger.ProcLog.Errorf("GenerateFromPassword err: %+v", err_gen)
 		}
 		userData.EncryptedPassword = string(hash)
 	}
 
-	userBsonM := toBsonM(userData)
+	userBsonM := ToBsonM(userData)
 	if _, err_put := mongoapi.RestfulAPIPost(userDataColl, filterEmailOnly, userBsonM); err_put != nil {
 		logger.ProcLog.Errorf("PutUserByID err: %+v", err_put)
 	}
@@ -1977,7 +1970,7 @@ func GetProfile(c *gin.Context) {
 		return
 	}
 	var pf Profile
-	err = json.Unmarshal(mapToByte(profile), &pf)
+	err = json.Unmarshal(MapToByte(profile), &pf)
 	if err != nil {
 		logger.ProcLog.Errorf("JSON Unmarshal err: %+v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"cause": err.Error()})
@@ -2085,12 +2078,11 @@ func dbProfileOperation(
 	filter := bson.M{"profileName": profileName}
 
 	// Replace all data with new one
-	switch method {
-	case "put":
+	if method == "put" {
 		if err = mongoapi.RestfulAPIDeleteOne(profileDataColl, filter); err != nil {
 			logger.ProcLog.Errorf("DeleteProfile err: %+v", err)
 		}
-	case "delete":
+	} else if method == "delete" {
 		if multiple {
 			multipleFilterConditions := []bson.M{}
 			for _, profileData := range profileDatas {
@@ -2116,7 +2108,7 @@ func dbProfileOperation(
 
 	// Insert data
 	if method == "post" || method == "put" {
-		profileBsonM := toBsonM(profile)
+		profileBsonM := ToBsonM(profile)
 		if _, err = mongoapi.RestfulAPIPost(profileDataColl, filter, profileBsonM); err != nil {
 			logger.ProcLog.Errorf("PostProfile err: %+v", err)
 		}

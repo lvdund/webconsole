@@ -7,11 +7,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// Path validation constants
-const (
-	MinURILength = 2
-)
-
 var PublicPath = "public"
 
 func ReturnPublic() gin.HandlerFunc {
@@ -52,7 +47,7 @@ func verifyDestPath(requestedURI string) string {
 	for _, r := range protected_route {
 		uri := strings.Split(requestedURI, "/")
 
-		if len(uri) < MinURILength {
+		if len(uri) < 2 {
 			continue
 		}
 		if uri[1] == r {

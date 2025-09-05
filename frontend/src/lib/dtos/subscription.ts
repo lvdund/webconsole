@@ -514,7 +514,7 @@ export const defaultSubscriptionDTO = (): SubscriptionDTO => ({
     authenticationMethod: "5G_AKA",
     sequenceNumber: "000000000023",
     permanentKey: "8baf473f2f8fd09487cccbd7097c6862",
-    operatorCodeType: "OPc",
+    operatorCodeType: "OP",
     operatorCode: "8e27b6af0e692e750f32667a3b14605d",
   },
   subscribedUeAmbr: {

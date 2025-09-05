@@ -180,7 +180,7 @@ func GetChargingRecord(c *gin.Context) {
 	offlineChargingSliceTypeMap := make(map[string]OfflineSliceTypeMap)
 
 	for _, ueData := range uesBsonA {
-		ueBsonM := toBsonM(ueData)
+		ueBsonM := ToBsonM(ueData)
 
 		supi := ueBsonM["Supi"].(string)
 
@@ -205,7 +205,7 @@ func GetChargingRecord(c *gin.Context) {
 			}
 
 			var chargingData ChargingData
-			err = json.Unmarshal(mapToByte(chargingDataInterface), &chargingData)
+			err = json.Unmarshal(MapToByte(chargingDataInterface), &chargingData)
 			if err != nil {
 				logger.BillingLog.Error(err)
 			}
@@ -250,7 +250,7 @@ func GetChargingRecord(c *gin.Context) {
 			du.Filter = chargingData.Filter
 
 			ratingGroupDataUsages[rg] = du
-			chargingRecordsBsonA = append(chargingRecordsBsonA, toBsonM(du))
+			chargingRecordsBsonA = append(chargingRecordsBsonA, ToBsonM(du))
 		}
 	}
 	for idx, record := range chargingRecordsBsonA {
@@ -277,7 +277,7 @@ func GetChargingRecord(c *gin.Context) {
 		if val, exist := offlineChargingSliceTypeMap[key]; exist {
 			rd.Usage += val.flowTotalUsage
 			rd.Usage += (rd.TotalVol - val.flowTotalVolum) * val.unitcost
-			chargingRecordsBsonA[idx] = toBsonM(rd)
+			chargingRecordsBsonA[idx] = ToBsonM(rd)
 		}
 	}
 
