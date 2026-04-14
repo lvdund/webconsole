@@ -16,23 +16,46 @@ func main() {
 		count     = flag.Int("n", 10, "Number of subscribers to create")
 		startIMSI = flag.String("start", "imsi-208930000000001", "Starting IMSI (with imsi- prefix)")
 		plmnID    = flag.String("plmn", "20893", "PLMN ID")
+		useOP     = flag.Bool("op", false, "Use OP (Operator Key)")
+		useOPC    = flag.Bool("opc", false, "Use OPC (Operator Code)")
 		help      = flag.Bool("h", false, "Show help")
 	)
 	flag.Parse()
 
 	if *help {
 		fmt.Println("Bulk Subscriber Upload Tool (Direct MongoDB)")
-		fmt.Println("Usage: go run bulk_subscriber_upload.go [options]")
+		fmt.Println("Usage: go run main_up.go [options]")
 		fmt.Println("\nOptions:")
 		flag.PrintDefaults()
 		fmt.Println("\nExample:")
-		fmt.Println("  go run bulk_subscriber_upload.go -n 100")
-		fmt.Println("  go run bulk_subscriber_upload.go -n 50 -start imsi-208930000001000 -plmn 20893")
+		fmt.Println("  go run main_up.go --op -n 100")
+		fmt.Println("  go run main_up.go --opc -n 50 -start imsi-208930000001000 -plmn 20893")
 		fmt.Println("\nNote: This tool directly inserts data into MongoDB database")
 		return
 	}
 
+	if !*useOP && !*useOPC {
+		*useOP = true
+	}
+
+	if *useOP && *useOPC {
+		fmt.Println("Error: --op and --opc are mutually exclusive")
+		return
+	}
+
+	hexKey := "8e27b6af0e692e750f32667a3b14605d"
+	if *useOPC {
+		data.SubsData.WebAuthenticationSubscription.Milenage.Op.OpValue = ""
+		data.SubsData.WebAuthenticationSubscription.Opc.OpcValue = hexKey
+	}
+
+	authMode := "OP"
+	if *useOPC {
+		authMode = "OPC"
+	}
+
 	fmt.Printf("Starting bulk subscriber upload (Direct MongoDB)...\n")
+	fmt.Printf("Auth mode: %s\n", authMode)
 	fmt.Printf("Count: %d subscribers\n", *count)
 	fmt.Printf("Starting IMSI: %s\n", *startIMSI)
 	fmt.Printf("PLMN ID: %s\n", *plmnID)
