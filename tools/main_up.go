@@ -1,23 +1,35 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
+	"runtime"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/free5gc/util/mongoapi"
+	"github.com/free5gc/webconsole/backend/WebUI"
 	"github.com/free5gc/webconsole/backend/logger"
 	"github.com/free5gc/webconsole/tools/data"
 )
 
 func main() {
+	defaultWorkers := runtime.NumCPU() * 2
+	if defaultWorkers > 32 {
+		defaultWorkers = 32
+	}
+
 	var (
 		count     = flag.Int("n", 10, "Number of subscribers to create")
 		startIMSI = flag.String("start", "imsi-208930000000001", "Starting IMSI (with imsi- prefix)")
 		plmnID    = flag.String("plmn", "20893", "PLMN ID")
 		useOP     = flag.Bool("op", false, "Use OP (Operator Key)")
 		useOPC    = flag.Bool("opc", false, "Use OPC (Operator Code)")
+		workers   = flag.Int("workers", defaultWorkers, "Number of concurrent MongoDB writers")
+		delay     = flag.Duration("delay", 0, "Optional delay after each subscriber write, e.g. 50ms")
 		help      = flag.Bool("h", false, "Show help")
 	)
 	flag.Parse()
@@ -32,6 +44,17 @@ func main() {
 		fmt.Println("  go run main_up.go --opc -n 50 -start imsi-208930000001000 -plmn 20893")
 		fmt.Println("\nNote: This tool directly inserts data into MongoDB database")
 		return
+	}
+
+	if *count <= 0 {
+		fmt.Println("Error: -n must be greater than 0")
+		return
+	}
+	if *workers <= 0 {
+		*workers = 1
+	}
+	if *workers > *count {
+		*workers = *count
 	}
 
 	if !*useOP && !*useOPC {
@@ -59,6 +82,10 @@ func main() {
 	fmt.Printf("Count: %d subscribers\n", *count)
 	fmt.Printf("Starting IMSI: %s\n", *startIMSI)
 	fmt.Printf("PLMN ID: %s\n", *plmnID)
+	fmt.Printf("Workers: %d\n", *workers)
+	if *delay > 0 {
+		fmt.Printf("Delay: %s\n", *delay)
+	}
 
 	// Connect to MongoDB
 	if err := mongoapi.SetMongoDB("free5gc", "mongodb://localhost:27017"); err != nil {
@@ -73,39 +100,86 @@ func main() {
 	}
 	fmt.Printf("✅ Admin tenant initialized\n")
 
-	// Create subscribers
-	successCount := 0
-	failCount := 0
+	// Pre-generate IMSIs so workers can write concurrently.
+	imsis := make([]string, *count)
 	currentIMSI := *startIMSI
-
 	for i := 0; i < *count; i++ {
-		userNumber := i + 1
-		fmt.Printf("Creating subscriber %d/%d (IMSI: %s)...", userNumber, *count, currentIMSI)
-
-		err := data.PostSub(&data.SubsData, currentIMSI, *plmnID)
-		if err != nil {
-			fmt.Printf(" ❌ Failed: %v\n", err)
-			failCount++
-		} else {
-			fmt.Printf(" ✅ Success\n")
-			successCount++
-		}
-
-		// Generate next IMSI for next iteration
-		if i < *count-1 { // Don't generate next IMSI for the last iteration
+		imsis[i] = currentIMSI
+		if i < *count-1 {
 			nextIMSI, err := data.NextIMSI(currentIMSI)
 			if err != nil {
 				log.Fatalf("Failed to generate next IMSI: %v", err)
 			}
 			currentIMSI = nextIMSI
 		}
-
-		// Small delay to avoid overwhelming the database
-		time.Sleep(50 * time.Millisecond)
 	}
 
+	// Marshal the template once. Each worker unmarshals into a private copy because
+	// PostSub mutates SubsData fields/maps while building MongoDB documents.
+	templateJSON, err := json.Marshal(data.SubsData)
+	if err != nil {
+		log.Fatalf("Failed to prepare subscriber template: %v", err)
+	}
+
+	fmt.Printf("Creating subscribers concurrently...\n")
+	startTime := time.Now()
+
+	jobs := make(chan string, *workers*2)
+	var wg sync.WaitGroup
+	var successCount int64
+	var failCount int64
+	var completed int64
+	progressEvery := *count / 20
+	if progressEvery < 1 {
+		progressEvery = 1
+	}
+	var printMu sync.Mutex
+
+	for w := 0; w < *workers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for imsi := range jobs {
+				var subData WebUI.SubsData
+				if err := json.Unmarshal(templateJSON, &subData); err != nil {
+					atomic.AddInt64(&failCount, 1)
+					printMu.Lock()
+					fmt.Printf("❌ Failed to clone template for %s: %v\n", imsi, err)
+					printMu.Unlock()
+				} else if err := data.PostSub(&subData, imsi, *plmnID); err != nil {
+					atomic.AddInt64(&failCount, 1)
+					printMu.Lock()
+					fmt.Printf("❌ Failed %s: %v\n", imsi, err)
+					printMu.Unlock()
+				} else {
+					atomic.AddInt64(&successCount, 1)
+				}
+
+				done := atomic.AddInt64(&completed, 1)
+				if int(done)%progressEvery == 0 || int(done) == *count {
+					printMu.Lock()
+					fmt.Printf("Progress: %d/%d (✅ %d, ❌ %d)\n", done, *count, atomic.LoadInt64(&successCount), atomic.LoadInt64(&failCount))
+					printMu.Unlock()
+				}
+				if *delay > 0 {
+					time.Sleep(*delay)
+				}
+			}
+		}()
+	}
+
+	for _, imsi := range imsis {
+		jobs <- imsi
+	}
+	close(jobs)
+	wg.Wait()
+
+	elapsed := time.Since(startTime)
+	success := atomic.LoadInt64(&successCount)
+	failed := atomic.LoadInt64(&failCount)
 	fmt.Printf("\n📊 Summary:\n")
-	fmt.Printf("  ✅ Successful: %d\n", successCount)
-	fmt.Printf("  ❌ Failed: %d\n", failCount)
-	fmt.Printf("  📈 Success rate: %.1f%%\n", float64(successCount)/float64(*count)*100)
+	fmt.Printf("  ✅ Successful: %d\n", success)
+	fmt.Printf("  ❌ Failed: %d\n", failed)
+	fmt.Printf("  📈 Success rate: %.1f%%\n", float64(success)/float64(*count)*100)
+	fmt.Printf("  ⏱️  Elapsed: %s (%.1f subscribers/sec)\n", elapsed.Round(time.Millisecond), float64(*count)/elapsed.Seconds())
 }
